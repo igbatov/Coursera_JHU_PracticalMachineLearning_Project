@@ -1,0 +1,95 @@
+---
+title: "JHUMachineLearningProject"
+author: "Igor Batov"
+date: '11 august 2016'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Practical Machine Learning
+
+In this project we are using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.The goal of project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz4H1VWOfgc
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Preparing data
+Load data from URL to local storage and read them in R.
+```{r}
+library(caret)
+# load data
+library(data.table)
+train = fread("C:\\Users\\igbatov\\Downloads\\pml-training.csv")
+test = fread("C:\\Users\\igbatov\\Downloads\\pml-testing.csv")
+```
+Remove columns that have near zero values.
+```{r}
+# remove columns that have near zero values
+nzv <- nearZeroVar(train, saveMetrics=FALSE)
+frameTrain = data.frame(train);
+filteredTrain <- frameTrain[,-nzv]
+```
+Also remove columns that have at least one NA
+```{r}
+# remove columns that have at least one NA
+filtered2Train=filteredTrain[,colSums(is.na(filteredTrain))==0]
+# filter test data accordingly
+frameTest = data.frame(test);
+filtered2Test = frameTest[ , which(names(frameTest) %in% names(filtered2Train))]
+```
+Also remove columns that surely have no prediction importance. The one column I hesitated about is "user_name". However as the goal of project is to predict the manner in which they all did the exercise (not to predict how every one of them do it), I removed this column also.
+```{r}
+# removing unnecessary columns
+filtered3Train = filtered2Train[, -c(1:6)]
+filtered3Test = filtered2Test[, -c(1:6)]
+```
+Check for predictor correlation matrix.
+```{r}
+# look at correlation
+library(corrplot)
+corrplot(cor(filtered3Train[,1:52]), order = "hclust")
+```
+
+We see that correlation between some of them are rather high.
+
+## Split data on train set and test set.
+```{r}
+# splitting
+inTrain <- createDataPartition(y=filtered3Train$classe,p=2/3, list=FALSE);
+training <- filtered3Train[inTrain,]
+testing <- filtered3Train[-inTrain,]
+```
+
+## Model #1 - Classification Tree.
+```{r}
+#try Classification Tree
+set.seed(125);
+cartmodel <- train(classe ~ ., method = "rpart", data = training)
+cartmodel_predict <- predict(cartmodel, testing)
+confMatrix <- confusionMatrix(testing$classe, cartmodel_predict)
+confMatrix
+```
+Classification Tree Accuracy is 0.5138 so we need some another model to predict.
+
+## Model #2 - Random Forest.
+I have tried to train Random Forest with default settings on the whole training set. But after waiting about an hour I decided to make training set for Random Forest smaller. With about 5 tries I found that 1/3 of training set gives reasonable accuracy.
+```{r}
+# try random forest
+# all training data calculated too long on my computer, so take only 1/3 of trainig here
+smallTraining = training[createDataPartition(y=training$classe,p=1/3, list=FALSE),];
+rfFit <- train(classe~ .,data=smallTraining,method="rf")
+predict_rf <- predict(rfFit, testing)
+(conf_rf <- confusionMatrix(testing$classe, predict_rf))
+predictedFiltered3Test <- predict(rfFit, filtered3Test)
+predictedFiltered3Test
+```
